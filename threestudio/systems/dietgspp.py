@@ -21,9 +21,6 @@ from threestudio.utils.criterion import PSNR, NIQE
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
-from threestudio.utils.sr_esrnet import SFTNet, default_init_weights
-
-import lpips
 from PIL import Image
 import torchvision.transforms.functional as TF
 import numpy as np
@@ -32,7 +29,7 @@ import numpy as np
 from random import randint
 from argparse import ArgumentParser, Namespace
 from threestudio.systems.gaussian_splatting.arguments import ModelParams, PipelineParams, OptimizationParams
-from threestudio.systems.gaussian_splatting.scene import Scene, GaussianModel, DiffGaussianModel
+from threestudio.systems.gaussian_splatting.scene import Scene, GaussianModel
 from threestudio.systems.gaussian_splatting.gaussian_renderer import render, render_latent_feature
 from threestudio.systems.gaussian_splatting.utils.wavelet_utils import wavelet_decomposition
 from threestudio.utils.loss_utils import l1_loss
@@ -78,9 +75,6 @@ class DietGSPP(BaseLift3DSystem):
         print(f"Guidance weights frozen.")
 
         self.stage_interval = self.cfg.num_sr_steps+self.cfg.num_sync_steps
-
-        # lpips loss
-        self.loss_fn_lpips = lpips.LPIPS(net='vgg').to(self.device)
         
         # Gaussian Splatting
         parser = ArgumentParser(description="Training script parameters")
@@ -124,6 +118,8 @@ class DietGSPP(BaseLift3DSystem):
 
         self.param = Param(point_num)
         
+        os.makedirs(os.path.join('checkpoint', self.scene_name), exist_ok=True)
+
     def training_step(self, batch, batch_idx):
         bg_color = [0, 0, 0]
         background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
@@ -168,9 +164,9 @@ class DietGSPP(BaseLift3DSystem):
             image_latents.append(self.image_latents[i].unsqueeze(0))
             org_image.append(self.org_image[i].unsqueeze(0))
             
-            render_feature_pkg = render_latent_feature(viewpoint_stack[i].moving_poses[4], self.gaussians, self.pipe, background, self.param()) # FIXME:
+            render_feature_pkg = render_latent_feature(viewpoint_stack[i].moving_poses[4], self.gaussians, self.pipe, background, self.param())
             latents_h.append(render_feature_pkg['render'].permute(1, 2, 0).unsqueeze(0))
-        
+
         image_latents = torch.cat(image_latents, dim=0)
         latents_h = torch.cat(latents_h, dim=0)
         org_image = torch.cat(org_image, dim=0)
@@ -262,14 +258,14 @@ class DietGSPP(BaseLift3DSystem):
                             final[idx] = gs_image[j].permute(2, 0, 1)[idx]
 
                         image_filename=f"sr_train/it{self.global_step}-{i}-{j}.png"
-                        plt.imsave(self.get_save_path(image_filename), torch.clamp(final, 0.0, 1.0).permute(1, 2, 0).detach().cpu().numpy()) # FIXME:
+                        plt.imsave(self.get_save_path(image_filename), torch.clamp(final, 0.0, 1.0).permute(1, 2, 0).detach().cpu().numpy())
                 
                         finals.append(final)
                     finals = torch.stack(finals, dim=0).movedim(1,-1)
                 
                 del self.param.cache[-1]
 
-            # torch.save(self.param.state_dict(), os.path.join("checkpoint/blurtanabata", str(stage_step) + ".pt"))
+            torch.save(self.param.state_dict(), os.path.join("checkpoint", self.scene_name, str(stage_step) + ".pt"))
 
         return {
             'loss': loss
