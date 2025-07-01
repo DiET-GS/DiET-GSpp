@@ -15,7 +15,7 @@ system:
   gaussian:
     dataroot: # Fill the data path
     model_path: # Fill the DiET-GS model path
-    load_point: true
+    load_point: True
 
   vis_interval: 200
 
